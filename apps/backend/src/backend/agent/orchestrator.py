@@ -480,10 +480,26 @@ def _load_history_anthropic(session: Session) -> list[dict]:
                 current_assistant = None
             history.append({"role": "user", "content": content})
         elif role == "assistant":
+            # Flush pending tool_results before starting a new assistant response.
+            # This happens when the previous iteration's results weren't flushed yet
+            # (e.g. the next iteration's response starts with text before tool_use).
+            if pending_tool_results:
+                history.append({"role": "user", "content": pending_tool_results})
+                pending_tool_results = []
             if current_assistant is None:
                 current_assistant = []
             current_assistant.append({"type": "text", "text": content})
         elif role == "tool_use":
+            # When pending_tool_results is non-empty here, a new iteration boundary
+            # has been crossed (previous iteration's results haven't been flushed
+            # yet). Flush them now so each assistant tool_use message is immediately
+            # followed by its corresponding tool_result user message.
+            if pending_tool_results:
+                if current_assistant is not None:
+                    history.append({"role": "assistant", "content": current_assistant})
+                    current_assistant = None
+                history.append({"role": "user", "content": pending_tool_results})
+                pending_tool_results = []
             if current_assistant is None:
                 current_assistant = []
             current_assistant.append(content)

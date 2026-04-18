@@ -26,15 +26,8 @@ def _system_prompt() -> str:
 
 
 def _build_system_prompt(*, allow_agent_data_access: bool) -> str:
-    prompt = _system_prompt()
-    if allow_agent_data_access:
-        return prompt
-    return (
-        prompt
-        + "\n\nAdditional constraint: the user has disabled your access to uploaded "
-        + "dataset files. Do not try to read, write, or dry-run against dataset "
-        + "content; ask the user to inspect or edit the data manually."
-    )
+    # Keep for backwards compatibility
+    return _system_prompt()
 
 
 def _detect_provider(model: str) -> str:
@@ -60,7 +53,9 @@ def _tools_to_openai_format(tools: list[dict]) -> list[dict]:
             "function": {
                 "name": t["name"],
                 "description": t.get("description", ""),
-                "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
+                "parameters": t.get(
+                    "input_schema", {"type": "object", "properties": {}}
+                ),
             },
         }
         for t in tools
@@ -99,14 +94,13 @@ async def run_turn(
         client: Any = anthropic.AsyncAnthropic()
     else:
         import openai as _openai
+
         client = _openai.AsyncOpenAI()
 
     tools = build_tools(session, allow_agent_data_access=allow_agent_data_access)
     tool_index: dict[str, ToolSpec] = {t.name: t for t in tools}
 
-    system = _build_system_prompt(
-        allow_agent_data_access=allow_agent_data_access
-    )
+    system = _build_system_prompt(allow_agent_data_access=allow_agent_data_access)
     anthropic_tool_specs = tools_to_anthropic_format(tools)
 
     session.append_chat({"role": "user", "content": user_message, "model": model})
@@ -152,14 +146,13 @@ async def resume_turn(
         client: Any = anthropic.AsyncAnthropic()
     else:
         import openai as _openai
+
         client = _openai.AsyncOpenAI()
 
     tools = build_tools(session, allow_agent_data_access=allow_agent_data_access)
     tool_index: dict[str, ToolSpec] = {t.name: t for t in tools}
 
-    system = _build_system_prompt(
-        allow_agent_data_access=allow_agent_data_access
-    )
+    system = _build_system_prompt(allow_agent_data_access=allow_agent_data_access)
     anthropic_tool_specs = tools_to_anthropic_format(tools)
 
     if provider == "anthropic":
@@ -249,10 +242,25 @@ async def _drive_loop(
             tool_results: list[dict] = []
             for tu in tool_uses:
                 result_str = _run_tool(tool_index, tu)
-                tr = {"type": "tool_result", "tool_use_id": tu["id"], "content": result_str}
+                tr = {
+                    "type": "tool_result",
+                    "tool_use_id": tu["id"],
+                    "content": result_str,
+                }
                 tool_results.append(tr)
-                session.append_chat({"role": "tool_result", "content": {"name": tu["name"], "result": result_str, "tool_use_id": tu["id"]}})
-                yield AgentEvent("tool_result", {"name": tu["name"], "result": result_str})
+                session.append_chat(
+                    {
+                        "role": "tool_result",
+                        "content": {
+                            "name": tu["name"],
+                            "result": result_str,
+                            "tool_use_id": tu["id"],
+                        },
+                    }
+                )
+                yield AgentEvent(
+                    "tool_result", {"name": tu["name"], "result": result_str}
+                )
 
             history.append({"role": "user", "content": tool_results})
 
@@ -262,13 +270,19 @@ async def _drive_loop(
             finish_reason = response.choices[0].finish_reason
             tool_uses_openai: list[dict] = []
 
-            native_assistant: dict[str, Any] = {"role": "assistant", "content": msg.content}
+            native_assistant: dict[str, Any] = {
+                "role": "assistant",
+                "content": msg.content,
+            }
             if msg.tool_calls:
                 native_assistant["tool_calls"] = [
                     {
                         "id": tc.id,
                         "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
                     }
                     for tc in msg.tool_calls
                 ]
@@ -301,9 +315,22 @@ async def _drive_loop(
 
             for tu in tool_uses_openai:
                 result_str = _run_tool(tool_index, tu)
-                history.append({"role": "tool", "tool_call_id": tu["id"], "content": result_str})
-                session.append_chat({"role": "tool_result", "content": {"name": tu["name"], "result": result_str, "tool_use_id": tu["id"]}})
-                yield AgentEvent("tool_result", {"name": tu["name"], "result": result_str})
+                history.append(
+                    {"role": "tool", "tool_call_id": tu["id"], "content": result_str}
+                )
+                session.append_chat(
+                    {
+                        "role": "tool_result",
+                        "content": {
+                            "name": tu["name"],
+                            "result": result_str,
+                            "tool_use_id": tu["id"],
+                        },
+                    }
+                )
+                yield AgentEvent(
+                    "tool_result", {"name": tu["name"], "result": result_str}
+                )
 
     cont = {"used_iterations": max_iterations, "model": model}
     session.append_chat({"role": "continuation_required", "content": cont})
@@ -370,7 +397,13 @@ def _load_history_openai(session: Session) -> list[dict]:
 
     def flush_tool_calls() -> None:
         if pending_tool_calls:
-            history.append({"role": "assistant", "content": None, "tool_calls": list(pending_tool_calls)})
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": list(pending_tool_calls),
+                }
+            )
             pending_tool_calls.clear()
 
     for entry in session.iter_chat():

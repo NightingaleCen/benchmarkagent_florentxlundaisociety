@@ -63,6 +63,9 @@ This separation is non-negotiable. An artifact is worthless if it can only be ru
 │   ├─ tool: generate_adapter_draft(schema, model_io_format)           │
 │   ├─ tool: generate_evaluator_draft(output_schema, criteria)         │
 │   ├─ tool: dry_run(sample_size=3) — invokes runner internally        │
+│   ├─ sub-agent: adapter_fixer / evaluator_fixer                      │
+│   │      (spawned on dry_run failure; iterates in isolation          │
+│   │       until the file passes, returns only the fixed file)        │
 │   └─ sub-agent: data_processor (only on user opt-in for data access) │
 │                                                                      │
 │  Session store (local FS for MVP)                                    │
@@ -229,23 +232,126 @@ evaluator:
 dataset:
   path: "dataset.jsonl"
   count: 50
+
+runtime:
+  python: ">=3.11"
+  requirements:                          # extra pip deps the adapter/evaluator need
+    - "tiktoken>=0.5"
+    - "requests>=2.31"
 ```
 
-### `adapter.py`
+The `runtime` section is the artifact's dependency manifest. The runner validates that declared packages are importable at startup and refuses to run if anything is missing, with a message telling the user exactly what to `pip install`. This is how we make good on the "runs anywhere Python runs" promise without forcing every artifact to bundle its environment.
 
-A pure function. Receives a model client (provided by the runner, configured per `--model` flag) and one input record. Returns the model's structured output as a dict.
+### `adapter.py` — Interface Contract
+
+A single Python function. The runner dynamically imports the module and calls the entrypoint once per dataset record. **Nothing in `adapter.py` may import from the agent backend, Claude Agent SDK, or any service that is not reachable from the user's machine.**
+
+**Signature:**
 
 ```python
+def run_model(model_client: ModelClient, input_record: dict) -> dict:
+    ...
+```
+
+**Input:**
+
+- `model_client`: an instance the runner constructs from the `--model` flag. See Model Client Interface below.
+- `input_record`: the `input` field of one dataset record (not the whole record). A dict matching `task.input_schema`.
+
+**Required return shape:**
+
+```python
+{
+    "output": dict,              # must match task.output_schema — the model's answer
+    "usage": {                   # token accounting; aggregated into summary.json
+        "input_tokens": int,
+        "output_tokens": int,
+    },
+    "latency_ms": int,           # wall-clock time of the full adapter call
+    "raw_response": Any,         # optional. raw provider payload, preserved for debugging
+}
+```
+
+**Rules:**
+
+- The adapter MAY call the model multiple times internally (chain-of-thought, multi-step tool use, retries with different prompts). The interface stays "one input record → one structured output."
+- The adapter MUST NOT reach into the evaluator, the judge, or any scoring logic. Its sole job is to produce the model's answer.
+- On failure (API error, parse failure, timeout), **raise an exception**. The runner catches it, records the sample as an error with the traceback in `results.jsonl`, and continues to the next sample. A single bad sample never aborts the run.
+
+**Example:**
+
+```python
+import time
+
 def run_model(model_client, input_record: dict) -> dict:
+    start = time.perf_counter()
     response = model_client.complete(
         prompt=f"Classify this clause: {input_record['clause_text']}",
     )
-    return {"label": response.text.strip().lower()}
+    return {
+        "output": {"label": response.text.strip().lower()},
+        "usage": {"input_tokens": response.input_tokens, "output_tokens": response.output_tokens},
+        "latency_ms": int((time.perf_counter() - start) * 1000),
+        "raw_response": response.raw,
+    }
 ```
 
-### `evaluator.py`
+### Model Client Interface
 
-A pure function. Receives the model output and the expected value, returns a score and a reason.
+The runner provides a `ModelClient` to every adapter. The client is a minimum portable abstraction — not a complete wrapper around every provider feature. It exposes:
+
+```python
+class ModelClient(Protocol):
+    def complete(self, prompt: str, **kwargs) -> CompletionResponse: ...
+    def messages(self, messages: list[dict], **kwargs) -> CompletionResponse: ...
+
+    # escape hatch for provider-specific features
+    raw_client: Any  # the underlying anthropic.Anthropic() or openai.OpenAI()
+
+class CompletionResponse:
+    text: str
+    input_tokens: int
+    output_tokens: int
+    raw: Any          # raw provider response
+```
+
+If an adapter needs a provider-specific feature (Anthropic extended thinking, OpenAI structured outputs, etc.), it uses `model_client.raw_client` and must declare the provider SDK in `runtime.requirements`. The common case — "prompt in, text out" — is covered by `.complete()` and stays portable across providers.
+
+### `evaluator.py` — Interface Contract
+
+A single Python function. The runner imports it and calls the entrypoint once per adapter result.
+
+**Signature:**
+
+```python
+def evaluate(model_output: dict, expected: dict, judge: Judge | None = None) -> dict:
+    ...
+```
+
+**Input:**
+
+- `model_output`: the `output` field from the adapter's return value (not the whole adapter result).
+- `expected`: the `expected` field from the dataset record.
+- `judge`: provided by the runner based on `evaluator.judge` in the manifest. `None` for pure rule evaluators; a `Judge` instance (see below) when `judge.type == "llm"`.
+
+**Required return shape:**
+
+```python
+{
+    "score": int,                # 0 or 1 in MVP. reserved for finer-grained scales later.
+    "reason": str,               # human-readable justification — shown in results UI
+    "judge_trace": dict,         # optional. when LLM-as-judge is used:
+                                 #   {"prompt": str, "raw_response": Any, "model": str}
+}
+```
+
+**Rules:**
+
+- Rule-based evaluators ignore the `judge` argument and return scores from deterministic logic.
+- LLM-as-judge evaluators call `judge.score(...)`, which wraps the pinned `model`, `temperature=0`, and `prompt_template` from the manifest. Evaluators never instantiate their own LLM client for judging — always go through `judge` so the manifest remains the single source of truth for judge configuration.
+- On failure, raise an exception. Same semantics as adapter failures.
+
+**Example (rule-based):**
 
 ```python
 def evaluate(model_output: dict, expected: dict, judge=None) -> dict:
@@ -255,6 +361,39 @@ def evaluate(model_output: dict, expected: dict, judge=None) -> dict:
         "reason": f"expected={expected['label']}, got={model_output.get('label')}",
     }
 ```
+
+**Example (LLM-as-judge):**
+
+```python
+def evaluate(model_output: dict, expected: dict, judge=None) -> dict:
+    verdict = judge.score(
+        model_answer=model_output["answer"],
+        reference=expected["reference_answer"],
+    )
+    return {
+        "score": 1 if verdict.pass_ else 0,
+        "reason": verdict.explanation,
+        "judge_trace": {"prompt": verdict.prompt, "raw_response": verdict.raw, "model": verdict.model},
+    }
+```
+
+### Judge Interface
+
+The runner constructs a `Judge` from `manifest.evaluator.judge` when `type == "llm"`:
+
+```python
+class Judge(Protocol):
+    def score(self, **fields) -> JudgeVerdict: ...
+
+class JudgeVerdict:
+    pass_: bool
+    explanation: str
+    prompt: str        # the rendered prompt, for audit
+    raw: Any           # raw judge model response
+    model: str         # judge model ID, for audit
+```
+
+The `**fields` passed to `score()` are substituted into the pinned `prompt_template`. This keeps the judge prompt fully declared in the manifest — the evaluator code only decides *what fields to compare*, never *how the judge is configured*.
 
 ### `dataset.jsonl`
 
@@ -342,7 +481,24 @@ Built with the Claude Agent SDK. The system prompt establishes:
 - **Constraint**: every artifact change goes through `write_artifact_file`. The agent never "remembers" state in the conversation; the workspace is the source of truth.
 - **Constraint**: the agent must not invent task details. When information is missing, ask.
 
-The `data_processor` sub-agent is structurally separate to enforce data isolation: when a user grants data access, only that sub-agent sees raw data. Its return value to the orchestrator is `dataset.jsonl`, not the raw input. This makes the privacy boundary explicit and inspectable.
+#### Sub-agents vs Tools — when to use which
+
+The orchestrator has both tools and sub-agents. The distinction is not "important vs unimportant" — it's about whether the work needs its own multi-turn loop or isolated context.
+
+**Use a tool** for single-shot operations whose decisions should remain visible in the main conversation:
+
+- `generate_schema_draft`, `generate_adapter_draft`, `generate_evaluator_draft` — the user sees what was generated and why; the orchestrator carries the result forward (e.g., designs the evaluator with knowledge of the adapter shape).
+- `read_artifact_file`, `write_artifact_file` — direct file ops.
+- `dry_run` — runs the runner on a small sample and returns the result structured.
+
+If the decision is "describe intent → get one artifact back," it's a tool. Full stop.
+
+**Use a sub-agent** when the work genuinely needs independent multi-turn reasoning or context isolation:
+
+- `adapter_fixer` / `evaluator_fixer` — spawned when `dry_run` reports a failure. Given the current file, the offending sample, and the error, the sub-agent iterates on the code in its own loop until `dry_run` passes (or it gives up with a reasoned explanation). Only the final file and a one-line verdict return to the main orchestrator. This keeps debugging noise out of the user-facing chat.
+- `data_processor` — spawned with explicit user consent to process raw user data into `dataset.jsonl`. Separation here is a **privacy boundary**, not just a complexity boundary: the main orchestrator never receives raw user data, only the schema-conforming output. This makes the privacy promise inspectable in the codebase.
+
+The rule: if a task can be completed in one generation, it's a tool; if it needs a loop or must not contaminate the main context, it's a sub-agent.
 
 ---
 
@@ -361,6 +517,10 @@ These are load-bearing decisions. Don't quietly violate them.
 5. **Build for the editor, not just the agent.** A power user should be able to delete the agent entirely and still produce a valid artifact by hand-editing files. If the format is hard to edit by hand, it is wrong.
 
 6. **No premature abstractions.** MVP supports one task type, two model providers, two judge types. Don't generalize until the second use case is real.
+
+7. **No agent at runtime.** The runner imports pure Python — nothing in `adapter.py` or `evaluator.py` may depend on the orchestrator, Claude Agent SDK, or any backend service. LLM-as-judge is a plain provider API call, not an agent call. Every piece of information the generated code needs at run-time must be written into the file or the manifest, never left implicit in "what the agent remembered during construction." The agent compiles the artifact; once compiled, the agent is gone.
+
+8. **Declared dependencies, not assumed ones.** Any extra pip package the artifact uses must appear in `manifest.runtime.requirements`. The runner validates presence at startup. An artifact that silently assumes `tiktoken` is installed is a broken artifact.
 
 ---
 
@@ -505,7 +665,8 @@ Decisions already made that we will not revisit without strong new evidence:
 - **Artifact**: the directory containing `manifest.yaml`, `dataset.jsonl`, `adapter.py`, `evaluator.py`. The unit of distribution.
 - **Adapter**: the Python module that knows how to call a model with one input record and return its structured output.
 - **Evaluator**: the Python module that knows how to score one (model_output, expected) pair as 0 or 1.
-- **Judge**: the mechanism inside the evaluator that produces the score. `rule` (deterministic) or `llm` (LLM-as-judge with pinned config).
+- **Judge**: the mechanism inside the evaluator that produces the score. `rule` (deterministic) or `llm` (LLM-as-judge with pinned config). The runner provides a `Judge` instance to the evaluator when `judge.type == "llm"`; it encapsulates the pinned model, temperature, and prompt template from the manifest.
+- **Model Client**: the minimum portable abstraction the runner hands to the adapter. Exposes `.complete()` / `.messages()` for the common case and `.raw_client` as an escape hatch for provider-specific features.
 - **Manifest**: `manifest.yaml`. Declares everything the runner needs to know about an artifact.
 - **Orchestrator**: the main agent that drives the conversation and edits the workspace.
 - **Runner**: `benchmarkrun`, the standalone CLI that executes an artifact.

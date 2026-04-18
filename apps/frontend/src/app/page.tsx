@@ -152,7 +152,11 @@ export default function Home() {
           />
         </div>
         <div className="overflow-hidden">
-          <ArtifactTabs sessionId={sessionId} refreshToken={refreshToken} />
+          <ArtifactTabs
+            sessionId={sessionId}
+            refreshToken={refreshToken}
+            onArtifactChanged={() => setRefreshToken((t) => t + 1)}
+          />
         </div>
       </div>
     </main>

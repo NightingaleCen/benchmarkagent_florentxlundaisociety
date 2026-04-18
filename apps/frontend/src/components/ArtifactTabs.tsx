@@ -26,11 +26,29 @@ const TABS: { key: TabKey; label: string }[] = [
 export function ArtifactTabs({
   sessionId,
   refreshToken,
+  onArtifactChanged,
 }: {
   sessionId: string;
   refreshToken: number;
+  onArtifactChanged: () => void;
 }) {
   const [active, setActive] = useState("manifest" as TabKey);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  async function handleImport(file: File | null) {
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      await api.importBenchmark(sessionId, file);
+      onArtifactChanged();
+    } catch (e) {
+      setImportError((e as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  }
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -50,14 +68,34 @@ export function ArtifactTabs({
             </button>
           ))}
         </div>
-        <a
-          href={api.exportUrl(sessionId)}
-          className="mr-3 rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
-          download
-        >
-          Export .zip
-        </a>
+        <div className="mr-3 flex items-center gap-2">
+          <label className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100">
+            {importing ? "Importing..." : "Import .zip"}
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              disabled={importing}
+              onChange={(e) => {
+                void handleImport(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <a
+            href={api.exportUrl(sessionId)}
+            className="rounded border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+            download
+          >
+            Export .zip
+          </a>
+        </div>
       </div>
+      {importError && (
+        <div className="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {importError}
+        </div>
+      )}
       <div className="flex-1 overflow-hidden">
         {active === "manifest" && (
           <FileEditor

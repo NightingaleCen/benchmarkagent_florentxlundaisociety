@@ -46,18 +46,50 @@ def _seed(client: TestClient) -> str:
 
 def test_export_zip_contains_all_files(client: TestClient):
     sid = _seed(client)
+    client.put(
+        f"/sessions/{sid}/artifact/__pycache__/adapter.cpython-312.pyc",
+        json={"content": "binary-looking-cache"},
+    )
     r = client.get(f"/sessions/{sid}/export")
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/zip"
     with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
         names = set(zf.namelist())
     assert {"manifest.yaml", "dataset.jsonl", "adapter.py", "evaluator.py"} <= names
+    assert "__pycache__/adapter.cpython-312.pyc" not in names
 
 
 def test_export_empty_artifact_fails(client: TestClient):
     sid = client.post("/sessions").json()["id"]
     r = client.get(f"/sessions/{sid}/export")
     assert r.status_code == 400
+
+
+def test_import_zip_populates_artifact(client: TestClient):
+    sid = client.post("/sessions").json()["id"]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.yaml", MANIFEST)
+        zf.writestr("dataset.jsonl", DATASET)
+        zf.writestr("adapter.py", ADAPTER)
+        zf.writestr("evaluator.py", EVALUATOR)
+        zf.writestr("__pycache__/evaluator.cpython-312.pyc", b"\xcbbinary")
+    buf.seek(0)
+
+    r = client.post(
+        f"/sessions/{sid}/export/import",
+        files={"file": ("benchmark.zip", buf.getvalue(), "application/zip")},
+    )
+    assert r.status_code == 200
+    assert set(r.json()["files"]) == {
+        "manifest.yaml",
+        "dataset.jsonl",
+        "adapter.py",
+        "evaluator.py",
+    }
+
+    files = set(client.get(f"/sessions/{sid}/artifact").json()["files"])
+    assert files == {"manifest.yaml", "dataset.jsonl", "adapter.py", "evaluator.py"}
 
 
 def test_trigger_run_with_stub_model(client: TestClient, monkeypatch):

@@ -75,6 +75,18 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return (await r.json()) as T;
 }
 
+async function upload<T>(path: string, formData: FormData): Promise<T> {
+  const r = await fetch(`${BACKEND_URL}${path}`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(`${r.status} ${path}: ${text}`);
+  }
+  return (await r.json()) as T;
+}
+
 export interface BackendConfig {
   orchestrator_model_default: string;
   max_agent_iterations: number;
@@ -117,6 +129,14 @@ export const api = {
   getRun: (sid: string, runId: string) =>
     req<RunDetail>(`/sessions/${sid}/runs/${runId}`),
   exportUrl: (sid: string) => `${BACKEND_URL}/sessions/${sid}/export`,
+  importBenchmark: async (sid: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return upload<{ ok: boolean; files: string[] }>(
+      `/sessions/${sid}/export/import`,
+      formData,
+    );
+  },
   runFileUrl: (sid: string, runId: string, name: string) =>
     `${BACKEND_URL}/sessions/${sid}/runs/${runId}/files/${encodeURIComponent(name)}`,
   runZipUrl: (sid: string, runId: string) =>

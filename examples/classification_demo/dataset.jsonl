@@ -1,0 +1,10 @@
+{"input": {"review_text": "An absolutely breathtaking film with stellar performances and a gripping story."}, "expected": {"sentiment": "positive"}}
+{"input": {"review_text": "A complete waste of time. The plot was incoherent and the acting was wooden."}, "expected": {"sentiment": "negative"}}
+{"input": {"review_text": "I laughed, I cried, I was deeply moved. A masterpiece of modern cinema."}, "expected": {"sentiment": "positive"}}
+{"input": {"review_text": "Dull, slow, and predictable. I kept checking my watch."}, "expected": {"sentiment": "negative"}}
+{"input": {"review_text": "One of the best movies I have seen this year. Highly recommended to everyone."}, "expected": {"sentiment": "positive"}}
+{"input": {"review_text": "Terrible dialogue and a nonsensical ending ruined what could have been decent."}, "expected": {"sentiment": "negative"}}
+{"input": {"review_text": "A delightful, heartwarming experience with unforgettable characters."}, "expected": {"sentiment": "positive"}}
+{"input": {"review_text": "Boring, derivative, and poorly edited. Save your money."}, "expected": {"sentiment": "negative"}}
+{"input": {"review_text": "Visually stunning and emotionally resonant from start to finish."}, "expected": {"sentiment": "positive"}}
+{"input": {"review_text": "Painfully bad. The worst two hours I have spent in a theater."}, "expected": {"sentiment": "negative"}}

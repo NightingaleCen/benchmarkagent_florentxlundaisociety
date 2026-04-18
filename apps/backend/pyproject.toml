@@ -1,0 +1,35 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "BenchmarkAgent backend — FastAPI + orchestrator agent"
+requires-python = ">=3.11"
+dependencies = [
+    "artifact-schema",
+    "benchmarkrun",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sse-starlette>=2.1",
+    "pydantic>=2.5",
+    "anthropic>=0.40",
+    "pyyaml>=6.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backend"]
+
+[tool.uv.sources]
+artifact-schema = { path = "../../packages/artifact_schema", editable = true }
+benchmarkrun = { path = "../../packages/runner", editable = true }

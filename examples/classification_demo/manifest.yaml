@@ -1,0 +1,35 @@
+schema_version: "0.1"
+
+name: "sentiment-binary"
+description: "Classify short movie review snippets as positive or negative sentiment."
+created_by: "hand-written-example"
+created_at: "2026-04-18T10:00:00Z"
+
+task:
+  type: "binary_classification"
+  input_schema:
+    review_text:
+      type: string
+      description: "A short movie review snippet."
+  output_schema:
+    sentiment:
+      type: string
+      enum: ["positive", "negative"]
+
+adapter:
+  module: "adapter.py"
+  entrypoint: "run_model"
+
+evaluator:
+  module: "evaluator.py"
+  entrypoint: "evaluate"
+  judge:
+    type: "rule"
+
+dataset:
+  path: "dataset.jsonl"
+  count: 10
+
+runtime:
+  python: ">=3.11"
+  requirements: []

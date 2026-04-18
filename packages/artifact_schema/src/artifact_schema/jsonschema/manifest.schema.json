@@ -1,0 +1,285 @@
+{
+  "$defs": {
+    "AdapterSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "module": {
+          "default": "adapter.py",
+          "title": "Module",
+          "type": "string"
+        },
+        "entrypoint": {
+          "default": "run_model",
+          "title": "Entrypoint",
+          "type": "string"
+        }
+      },
+      "title": "AdapterSpec",
+      "type": "object"
+    },
+    "DatasetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "default": "dataset.jsonl",
+          "title": "Path",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "title": "DatasetSpec",
+      "type": "object"
+    },
+    "EvaluatorSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "module": {
+          "default": "evaluator.py",
+          "title": "Module",
+          "type": "string"
+        },
+        "entrypoint": {
+          "default": "evaluate",
+          "title": "Entrypoint",
+          "type": "string"
+        },
+        "judge": {
+          "discriminator": {
+            "mapping": {
+              "llm": "#/$defs/LLMJudgeSpec",
+              "rule": "#/$defs/RuleJudgeSpec"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RuleJudgeSpec"
+            },
+            {
+              "$ref": "#/$defs/LLMJudgeSpec"
+            }
+          ],
+          "title": "Judge"
+        }
+      },
+      "required": [
+        "judge"
+      ],
+      "title": "EvaluatorSpec",
+      "type": "object"
+    },
+    "FieldSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "integer",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "enum": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enum"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "FieldSpec",
+      "type": "object"
+    },
+    "LLMJudgeSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "llm",
+          "title": "Type",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "temperature": {
+          "title": "Temperature",
+          "type": "number"
+        },
+        "prompt_template": {
+          "title": "Prompt Template",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "model",
+        "temperature",
+        "prompt_template"
+      ],
+      "title": "LLMJudgeSpec",
+      "type": "object"
+    },
+    "RuleJudgeSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "rule",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "RuleJudgeSpec",
+      "type": "object"
+    },
+    "RuntimeSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "python": {
+          "default": ">=3.11",
+          "title": "Python",
+          "type": "string"
+        },
+        "requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requirements",
+          "type": "array"
+        }
+      },
+      "title": "RuntimeSpec",
+      "type": "object"
+    },
+    "TaskSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "binary_classification",
+          "title": "Type",
+          "type": "string"
+        },
+        "input_schema": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldSpec"
+          },
+          "title": "Input Schema",
+          "type": "object"
+        },
+        "output_schema": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldSpec"
+          },
+          "title": "Output Schema",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "input_schema",
+        "output_schema"
+      ],
+      "title": "TaskSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "created_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Created By"
+    },
+    "created_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Created At"
+    },
+    "task": {
+      "$ref": "#/$defs/TaskSpec"
+    },
+    "adapter": {
+      "$ref": "#/$defs/AdapterSpec"
+    },
+    "evaluator": {
+      "$ref": "#/$defs/EvaluatorSpec"
+    },
+    "dataset": {
+      "$ref": "#/$defs/DatasetSpec"
+    },
+    "runtime": {
+      "$ref": "#/$defs/RuntimeSpec"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name",
+    "description",
+    "task",
+    "evaluator",
+    "dataset"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}

@@ -1,0 +1,29 @@
+[project]
+name = "benchmarkrun"
+version = "0.1.0"
+description = "Standalone execution engine for BenchmarkAgent artifacts"
+requires-python = ">=3.11"
+dependencies = [
+    "artifact-schema",
+    "anthropic>=0.40",
+    "openai>=1.50",
+]
+
+[project.scripts]
+benchmarkrun = "benchmarkrun.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benchmarkrun"]
+
+[tool.uv.sources]
+artifact-schema = { path = "../artifact_schema", editable = true }

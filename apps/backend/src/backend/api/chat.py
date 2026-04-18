@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+import json
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
+from backend.agent.orchestrator import run_turn
+from backend.api.sessions import get_store
+from backend.sessions import SessionStore
+
+router = APIRouter(prefix="/sessions/{sid}", tags=["chat"])
+
+
+class MessageBody(BaseModel):
+    content: str
+
+
+@router.get("/messages")
+def get_messages(sid: str, store: SessionStore = Depends(get_store)):
+    if not store.exists(sid):
+        raise HTTPException(404, "session not found")
+    return {"entries": list(store.get(sid).iter_chat())}
+
+
+@router.post("/messages")
+async def post_message(
+    sid: str, body: MessageBody, store: SessionStore = Depends(get_store)
+):
+    if not store.exists(sid):
+        raise HTTPException(404, "session not found")
+    session = store.get(sid)
+
+    async def event_stream():
+        try:
+            async for event in run_turn(session, body.content):
+                yield {
+                    "event": event.kind,
+                    "data": json.dumps(event.data, ensure_ascii=False),
+                }
+        except Exception as e:
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": str(e)}),
+            }
+
+    return EventSourceResponse(event_stream())

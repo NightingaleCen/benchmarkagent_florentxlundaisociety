@@ -121,4 +121,6 @@ export const api = {
     `${BACKEND_URL}/sessions/${sid}/runs/${runId}/files/${encodeURIComponent(name)}`,
   runZipUrl: (sid: string, runId: string) =>
     `${BACKEND_URL}/sessions/${sid}/runs/${runId}/download`,
+  continueTurnUrl: (sid: string) =>
+    `${BACKEND_URL}/sessions/${sid}/messages/continue`,
 };

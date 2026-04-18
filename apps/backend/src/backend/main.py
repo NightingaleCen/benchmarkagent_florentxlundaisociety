@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend import __version__
-from backend.api import artifact, chat, export, runs, sessions
+from backend.api import artifact, chat, config as config_api, export, runs, sessions
 
 
 def create_app() -> FastAPI:
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(runs.router)
     app.include_router(export.router)
+    app.include_router(config_api.router)
 
     @app.get("/health")
     def health():

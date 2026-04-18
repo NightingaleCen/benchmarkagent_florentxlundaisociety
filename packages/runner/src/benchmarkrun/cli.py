@@ -20,7 +20,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--model",
         required=True,
-        help="model id (e.g. claude-sonnet-4-6, gpt-4o-mini)",
+        help=(
+            "model id. Examples: 'claude-sonnet-4-6', 'claude-opus-4-7', "
+            "'gpt-4o-mini'. For custom names (e.g. served via a proxy), prefix "
+            "with the provider: 'anthropic:my-custom-name' or 'openai:my-llama'."
+        ),
+    )
+    p.add_argument(
+        "--provider",
+        choices=["anthropic", "openai"],
+        default=None,
+        help=(
+            "explicitly select provider. Overrides both the 'provider:model' "
+            "prefix in --model and the name-based auto-detection. Use this when "
+            "your model name doesn't match claude-*/gpt-*/o* and you don't want "
+            "to embed the provider in --model."
+        ),
     )
     p.add_argument(
         "--limit",
@@ -68,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             model_id=args.model,
             out_dir=out_dir,
             limit=args.limit,
+            provider=args.provider,
         )
     except Exception as e:
         print(f"run failed: {e}", file=sys.stderr)

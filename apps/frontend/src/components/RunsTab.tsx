@@ -12,6 +12,7 @@ export function RunsTab({
 }) {
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [model, setModel] = useState("claude-haiku-4-5-20251001");
+  const [provider, setProvider] = useState<string>("auto");
   const [limit, setLimit] = useState<string>("5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +36,13 @@ export function RunsTab({
     setError(null);
     try {
       const n = limit.trim() === "" ? undefined : Number(limit);
-      await api.triggerRun(sessionId, model, Number.isFinite(n!) ? n : undefined);
+      const prov = provider === "auto" ? undefined : provider;
+      await api.triggerRun(
+        sessionId,
+        model,
+        Number.isFinite(n!) ? n : undefined,
+        prov,
+      );
       await reload();
     } catch (e) {
       setError((e as Error).message);
@@ -53,7 +60,20 @@ export function RunsTab({
             className="mono mt-0.5 rounded border px-2 py-1 text-xs"
             value={model}
             onChange={(e) => setModel(e.target.value)}
+            placeholder="claude-sonnet-4-6 or anthropic:custom-name"
           />
+        </label>
+        <label className="flex flex-col text-xs text-slate-600">
+          provider
+          <select
+            className="mono mt-0.5 rounded border px-2 py-1 text-xs"
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+          >
+            <option value="auto">auto-detect</option>
+            <option value="anthropic">anthropic</option>
+            <option value="openai">openai</option>
+          </select>
         </label>
         <label className="flex flex-col text-xs text-slate-600">
           limit

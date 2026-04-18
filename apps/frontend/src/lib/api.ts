@@ -49,8 +49,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return (await r.json()) as T;
 }
 
+export interface BackendConfig {
+  orchestrator_model_default: string;
+  max_agent_iterations: number;
+}
+
 export const api = {
   backendUrl: BACKEND_URL,
+  getConfig: () => req<BackendConfig>("/config"),
   createSession: () => req<{ id: string }>("/sessions", { method: "POST" }),
   getSession: (sid: string) =>
     req<{ id: string; files: string[]; chat_entries: number }>(`/sessions/${sid}`),
@@ -65,10 +71,19 @@ export const api = {
     }),
   getMessages: (sid: string) =>
     req<{ entries: ChatEntry[] }>(`/sessions/${sid}/messages`),
-  triggerRun: (sid: string, model: string, limit?: number) =>
+  triggerRun: (
+    sid: string,
+    model: string,
+    limit?: number,
+    provider?: string,
+  ) =>
     req<{ run_id: string; summary: RunSummary }>(`/sessions/${sid}/runs`, {
       method: "POST",
-      body: JSON.stringify({ model, limit: limit ?? null }),
+      body: JSON.stringify({
+        model,
+        limit: limit ?? null,
+        provider: provider ?? null,
+      }),
     }),
   listRuns: (sid: string) =>
     req<{ runs: RunRecord[] }>(`/sessions/${sid}/runs`),

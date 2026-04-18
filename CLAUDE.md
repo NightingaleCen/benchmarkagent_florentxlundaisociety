@@ -225,9 +225,13 @@ evaluator:
   judge:
     type: "rule"                          # "rule" | "llm"
     # When type == "llm", the following fields are REQUIRED:
-    # model: "claude-sonnet-4-6"
+    # model: "claude-sonnet-4-6"          # or "claude-opus-4-7", etc.
     # temperature: 0
     # prompt_template: "..."
+    #
+    # For custom model names (e.g. proxied endpoints), use "provider:model" syntax:
+    # model: "anthropic:my-custom-claude-clone"
+    # model: "openai:llama-3.1-70b-served-via-vllm"
 
 dataset:
   path: "dataset.jsonl"
@@ -428,7 +432,9 @@ Critical responsibilities:
 A standalone, pip-installable CLI. **Build this as if it will live in a different repo** — never reach for backend code.
 
 Responsibilities:
-- Parse CLI args: `benchmarkrun <artifact_dir> --model <model_id> [--limit N] [--out <dir>]`.
+- Parse CLI args: `benchmarkrun <artifact_dir> --model <model_id> [--provider anthropic|openai] [--limit N] [--out <dir>]`.
+  - `--model` accepts bare names (`claude-sonnet-4-6`, `gpt-4o-mini`) with prefix-based provider detection, or explicit `provider:model` form (`anthropic:my-custom-name`).
+  - `--provider` forces a provider regardless of name — needed when you run a custom-named model through a proxy (`ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`).
 - Load and validate the manifest via `artifact_schema`.
 - Dynamically import `adapter.py` and `evaluator.py` from the artifact directory.
 - Construct a model client based on `--model` (Anthropic or OpenAI in MVP).

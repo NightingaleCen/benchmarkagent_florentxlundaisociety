@@ -69,7 +69,9 @@ def test_trigger_run_with_stub_model(client: TestClient, monkeypatch):
         model_id = "fake"
         raw_client = None
 
-    monkeypatch.setattr(rt, "build_model_client", lambda m: _Stub())
+    monkeypatch.setattr(
+        rt, "build_model_client", lambda m, *, provider=None: _Stub()
+    )
 
     sid = _seed(client)
     r = client.post(f"/sessions/{sid}/runs", json={"model": "fake"})

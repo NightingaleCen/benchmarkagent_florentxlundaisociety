@@ -39,17 +39,24 @@ async def run_turn(
     user_message: str,
     *,
     settings: Settings | None = None,
+    model_override: str | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """Drive one user turn: append their message, run the tool loop until the
-    assistant stops requesting tools, append every event, yield as it goes."""
+    assistant stops requesting tools, append every event, yield as it goes.
+
+    ``model_override`` (if given) takes precedence over ``settings.orchestrator_model``
+    for this turn only. Typical use: the frontend lets the user pick a model per
+    session and passes it with each chat request.
+    """
     settings = settings or get_settings()
+    model = model_override or settings.orchestrator_model
     client = anthropic.AsyncAnthropic()
     tools = build_tools(session)
     tool_index: dict[str, ToolSpec] = {t.name: t for t in tools}
 
     history = _load_history(session)
     history.append({"role": "user", "content": user_message})
-    session.append_chat({"role": "user", "content": user_message})
+    session.append_chat({"role": "user", "content": user_message, "model": model})
 
     system = _system_prompt()
     tool_specs = tools_to_anthropic_format(tools)
@@ -57,7 +64,7 @@ async def run_turn(
     for iteration in range(settings.max_agent_iterations):
         try:
             response = await client.messages.create(
-                model=settings.orchestrator_model,
+                model=model,
                 max_tokens=4096,
                 system=system,
                 tools=tool_specs,

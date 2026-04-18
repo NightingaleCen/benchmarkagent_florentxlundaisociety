@@ -58,6 +58,7 @@ def build_tools(session: Session) -> list[ToolSpec]:
     def dry_run(args: dict) -> str:
         sample_size = int(args.get("sample_size", 3))
         model_id = args.get("model", "claude-haiku-4-5-20251001")
+        provider = args.get("provider")
         out_dir = session.runs_dir / "dry_run"
         try:
             artifact = load_artifact(session.artifact_dir)
@@ -65,7 +66,11 @@ def build_tools(session: Session) -> list[ToolSpec]:
             return _err(f"artifact failed to load: {e}")
         try:
             summary = run_benchmark(
-                artifact, model_id=model_id, out_dir=out_dir, limit=sample_size
+                artifact,
+                model_id=model_id,
+                out_dir=out_dir,
+                limit=sample_size,
+                provider=provider,
             )
         except Exception as e:
             return _err(f"dry run failed: {e}")
@@ -138,7 +143,15 @@ def build_tools(session: Session) -> list[ToolSpec]:
                     },
                     "model": {
                         "type": "string",
-                        "description": "model id to test with; defaults to a cheap haiku model",
+                        "description": (
+                            "model id to test with; defaults to a cheap haiku model. "
+                            "Supports `provider:model` syntax (e.g. `openai:gpt-4o-mini`)."
+                        ),
+                    },
+                    "provider": {
+                        "type": "string",
+                        "enum": ["anthropic", "openai"],
+                        "description": "explicit provider override; see --provider",
                     },
                 },
             },

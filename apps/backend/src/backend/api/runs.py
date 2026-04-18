@@ -18,6 +18,7 @@ router = APIRouter(prefix="/sessions/{sid}/runs", tags=["runs"])
 class RunRequest(BaseModel):
     model: str
     limit: int | None = None
+    provider: str | None = None
 
 
 @router.post("")
@@ -37,7 +38,11 @@ def trigger_run(
     out_dir = session.runs_dir / stamp
     try:
         summary = run_benchmark(
-            artifact, model_id=body.model, out_dir=out_dir, limit=body.limit
+            artifact,
+            model_id=body.model,
+            out_dir=out_dir,
+            limit=body.limit,
+            provider=body.provider,
         )
     except Exception as e:
         raise HTTPException(500, f"run failed: {e}")

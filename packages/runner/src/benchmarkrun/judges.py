@@ -9,7 +9,7 @@ from typing import Any
 
 from artifact_schema import LLMJudgeSpec
 
-from benchmarkrun.model_clients import AnthropicModelClient, OpenAIModelClient
+from benchmarkrun.model_clients import build_model_client
 
 
 @dataclass
@@ -25,15 +25,8 @@ class LLMJudge:
     def __init__(self, spec: LLMJudgeSpec) -> None:
         self.spec = spec
         self.model = spec.model
-        if spec.model.startswith("claude-"):
-            self._client = AnthropicModelClient(spec.model)
-        elif spec.model.startswith(("gpt-", "o1", "o3", "o4")):
-            self._client = OpenAIModelClient(spec.model)
-        else:
-            raise ValueError(
-                f"unsupported judge model: {spec.model!r}. "
-                f"MVP supports claude-* and gpt-*/o* judges."
-            )
+        # Supports `provider:model` syntax inside spec.model, same as the CLI.
+        self._client = build_model_client(spec.model)
 
     def score(self, **fields: Any) -> JudgeVerdict:
         prompt = self.spec.prompt_template.format(**fields)

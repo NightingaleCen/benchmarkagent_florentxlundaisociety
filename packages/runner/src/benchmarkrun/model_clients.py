@@ -90,17 +90,75 @@ class OpenAIModelClient:
         )
 
 
-def build_model_client(model_id: str) -> ModelClient:
-    """Factory: decide provider from the model_id string.
+VALID_PROVIDERS: tuple[str, ...] = ("anthropic", "openai")
 
-    Anthropic: model IDs starting with ``claude-``.
-    OpenAI: model IDs starting with ``gpt-`` or ``o`` (o1, o3, o4-...).
+
+def parse_model_spec(model_id: str) -> tuple[str | None, str]:
+    """Split a ``provider:model`` spec into parts.
+
+    Returns ``(provider, model_name)``. If no colon is present, returns
+    ``(None, model_id)`` and the caller should fall back to prefix detection
+    or an explicit ``provider`` override.
     """
-    if model_id.startswith("claude-"):
-        return AnthropicModelClient(model_id)
-    if model_id.startswith(("gpt-", "o1", "o3", "o4")):
-        return OpenAIModelClient(model_id)
-    raise ValueError(
-        f"unrecognized model id: {model_id!r}. "
-        f"MVP supports claude-* (Anthropic) and gpt-*/o* (OpenAI)."
-    )
+    if ":" in model_id:
+        provider, name = model_id.split(":", 1)
+        provider = provider.strip().lower()
+        name = name.strip()
+        if provider not in VALID_PROVIDERS:
+            raise ValueError(
+                f"unknown provider {provider!r} in model spec {model_id!r}. "
+                f"supported: {list(VALID_PROVIDERS)}"
+            )
+        if not name:
+            raise ValueError(f"empty model name in spec {model_id!r}")
+        return provider, name
+    return None, model_id
+
+
+def _detect_provider(model_name: str) -> str | None:
+    if model_name.startswith("claude-"):
+        return "anthropic"
+    if model_name.startswith(("gpt-", "o1", "o3", "o4")):
+        return "openai"
+    return None
+
+
+def build_model_client(model_id: str, *, provider: str | None = None) -> ModelClient:
+    """Construct a ``ModelClient`` for the given model identifier.
+
+    Resolution order (highest precedence first):
+      1. ``provider`` keyword argument (from CLI ``--provider`` flag).
+      2. ``provider:model`` syntax in ``model_id`` (e.g. ``anthropic:my-custom``).
+      3. Prefix detection on the model name (``claude-*``, ``gpt-*``, ``o1/o3/o4-*``).
+
+    If none of these can decide, raise ``ValueError`` with a message telling
+    the user how to disambiguate.
+    """
+    explicit_from_spec, model_name = parse_model_spec(model_id)
+
+    if provider is not None:
+        provider = provider.strip().lower()
+        if provider not in VALID_PROVIDERS:
+            raise ValueError(
+                f"unknown provider override {provider!r}. "
+                f"supported: {list(VALID_PROVIDERS)}"
+            )
+        chosen = provider
+    elif explicit_from_spec is not None:
+        chosen = explicit_from_spec
+    else:
+        detected = _detect_provider(model_name)
+        if detected is None:
+            raise ValueError(
+                f"cannot determine provider for model {model_name!r}. "
+                f"disambiguate by either prefixing the model "
+                f"(`--model anthropic:{model_name}` or `--model openai:{model_name}`) "
+                f"or passing `--provider anthropic|openai`."
+            )
+        chosen = detected
+
+    if chosen == "anthropic":
+        return AnthropicModelClient(model_name)
+    if chosen == "openai":
+        return OpenAIModelClient(model_name)
+    raise ValueError(f"unhandled provider: {chosen!r}")

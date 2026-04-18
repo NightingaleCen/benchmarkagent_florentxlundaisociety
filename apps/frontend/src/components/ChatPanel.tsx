@@ -7,6 +7,7 @@ import { postSSE } from "@/lib/sse";
 interface Props {
   sessionId: string;
   onArtifactChanged: () => void;
+  agentModel: string;
 }
 
 interface RenderedMessage {
@@ -60,7 +61,7 @@ function hydrateFromLog(entries: ChatEntry[]): RenderedMessage[] {
   return out;
 }
 
-export function ChatPanel({ sessionId, onArtifactChanged }: Props) {
+export function ChatPanel({ sessionId, onArtifactChanged, agentModel }: Props) {
   const [messages, setMessages] = useState<RenderedMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -92,7 +93,7 @@ export function ChatPanel({ sessionId, onArtifactChanged }: Props) {
     try {
       await postSSE(
         `${api.backendUrl}/sessions/${sessionId}/messages`,
-        { content },
+        { content, model: agentModel || undefined },
         (ev) => {
           const data = JSON.parse(ev.data);
           if (ev.event === "assistant_text") {
@@ -166,7 +167,10 @@ export function ChatPanel({ sessionId, onArtifactChanged }: Props) {
   return (
     <div className="flex h-full flex-col bg-white">
       <div className="flex items-center justify-between border-b px-4 py-2">
-        <h2 className="text-sm font-semibold text-slate-700">Orchestrator</h2>
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-sm font-semibold text-slate-700">Orchestrator</h2>
+          <span className="mono text-xs text-slate-400">{agentModel}</span>
+        </div>
         <span className="mono text-xs text-slate-400">session {sessionId}</span>
       </div>
       <div

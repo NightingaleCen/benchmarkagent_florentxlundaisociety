@@ -34,7 +34,7 @@ class _FakeClient:
 @pytest.fixture
 def patched_build(monkeypatch):
     def _install(table):
-        def fake_build(model_id: str):
+        def fake_build(model_id: str, *, provider: str | None = None):
             return _FakeClient(table=table, model_id=model_id)
 
         import benchmarkrun.runtime as rt

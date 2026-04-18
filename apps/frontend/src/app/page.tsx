@@ -6,13 +6,25 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { ArtifactTabs } from "@/components/ArtifactTabs";
 
 const STORAGE_KEY = "bmk-session-id";
+const MODEL_STORAGE_KEY = "bmk-agent-model";
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [agentModel, setAgentModel] = useState<string>("");
+  const [backendDefault, setBackendDefault] = useState<string>("");
 
   useEffect(() => {
+    api
+      .getConfig()
+      .then((c) => {
+        setBackendDefault(c.orchestrator_model_default);
+        const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+        setAgentModel(saved || c.orchestrator_model_default);
+      })
+      .catch((e) => setError(e.message));
+
     const existing = localStorage.getItem(STORAGE_KEY);
     if (existing) {
       api
@@ -27,6 +39,15 @@ export default function Home() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function updateAgentModel(v: string) {
+    setAgentModel(v);
+    if (v && v !== backendDefault) {
+      localStorage.setItem(MODEL_STORAGE_KEY, v);
+    } else {
+      localStorage.removeItem(MODEL_STORAGE_KEY);
+    }
+  }
 
   function bootstrap() {
     api
@@ -76,18 +97,40 @@ export default function Home() {
             build a reusable LLM benchmark
           </span>
         </div>
-        <button
-          onClick={resetSession}
-          className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-        >
-          new session
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            agent model
+            <input
+              className="mono w-64 rounded border px-2 py-1 text-xs"
+              value={agentModel}
+              onChange={(e) => updateAgentModel(e.target.value)}
+              placeholder={backendDefault}
+              title={`backend default: ${backendDefault}`}
+            />
+            {agentModel && agentModel !== backendDefault && (
+              <button
+                onClick={() => updateAgentModel(backendDefault)}
+                className="text-xs text-slate-400 hover:text-slate-700"
+                title="reset to backend default"
+              >
+                reset
+              </button>
+            )}
+          </label>
+          <button
+            onClick={resetSession}
+            className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+          >
+            new session
+          </button>
+        </div>
       </header>
       <div className="grid flex-1 grid-cols-[minmax(380px,1fr)_minmax(600px,1.4fr)] overflow-hidden">
         <div className="border-r overflow-hidden">
           <ChatPanel
             sessionId={sessionId}
             onArtifactChanged={() => setRefreshToken((t) => t + 1)}
+            agentModel={agentModel}
           />
         </div>
         <div className="overflow-hidden">

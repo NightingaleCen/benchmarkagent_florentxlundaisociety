@@ -21,11 +21,12 @@ def run_benchmark(
     model_id: str,
     out_dir: Path,
     limit: int | None = None,
+    provider: str | None = None,
 ) -> Summary:
     manifest = artifact.manifest
     dataset_path = artifact.root / manifest.dataset.path
 
-    model_client = build_model_client(model_id)
+    model_client = build_model_client(model_id, provider=provider)
     judge = build_judge(manifest.evaluator.judge)
 
     writer = ResultsWriter(out_dir)

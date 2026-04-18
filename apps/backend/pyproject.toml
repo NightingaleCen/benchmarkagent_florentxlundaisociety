@@ -13,6 +13,7 @@ dependencies = [
     "anthropic>=0.40",
     "pyyaml>=6.0",
     "python-multipart>=0.0.9",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]

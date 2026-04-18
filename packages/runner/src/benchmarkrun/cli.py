@@ -46,6 +46,10 @@ def _default_out(artifact_dir: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     args = build_parser().parse_args(argv)
     try:
         artifact = load_artifact(args.artifact_dir)

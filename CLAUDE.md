@@ -643,6 +643,7 @@ Expected: nonzero exit, clear error message naming the missing field.
 - **No comments explaining what code does** — name things well instead. Comments are reserved for non-obvious why (a workaround, a constraint, a surprising invariant).
 - **Tests live next to the package they test** (`packages/runner/tests/`, `apps/backend/tests/`).
 - **Secrets**: never in code or repo. `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` from environment. Document required env vars in each `pyproject.toml`'s README section.
+- **`.env` loading**: copy `.env.example` → `.env` at the repo root. Both the backend (`apps/backend/src/backend/main.py`) and the `benchmarkrun` CLI (`packages/runner/src/benchmarkrun/cli.py`) call `python-dotenv`'s `load_dotenv()` at startup, so anything in `.env` lands in the process environment before any SDK client is constructed. `.env` and `.env.local` are gitignored. Use `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` to point the SDKs at a proxy or gateway — no code change needed, the official SDKs read those natively.
 
 ---
 

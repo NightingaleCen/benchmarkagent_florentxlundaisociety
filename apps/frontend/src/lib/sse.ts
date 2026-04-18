@@ -30,7 +30,7 @@ export async function postSSE(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
 
     let sep;
     while ((sep = buffer.indexOf("\n\n")) !== -1) {

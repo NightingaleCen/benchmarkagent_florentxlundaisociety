@@ -322,6 +322,7 @@ export function ChatPanel({
         {messages.map((m) => (
           <MessageBubble key={m.id} message={m} />
         ))}
+        {busy && <ThinkingBubble />}
       </div>
       <div className="border-t p-3">
         {needsContinue && (
@@ -405,6 +406,19 @@ function MessageBubble({ message }: { message: RenderedMessage }) {
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
       error: {message.text}
+    </div>
+  );
+}
+
+function ThinkingBubble() {
+  return (
+    <div className="flex justify-start">
+      <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-500">
+        <span className="thinking-dot" />
+        <span className="thinking-dot thinking-dot-delay-1" />
+        <span className="thinking-dot thinking-dot-delay-2" />
+        <span className="ml-1">thinking...</span>
+      </div>
     </div>
   );
 }

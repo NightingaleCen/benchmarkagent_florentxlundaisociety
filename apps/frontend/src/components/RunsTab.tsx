@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, RunRecord } from "@/lib/api";
+import { RunDetail } from "@/components/RunDetail";
 
 export function RunsTab({
   sessionId,
@@ -16,6 +17,7 @@ export function RunsTab({
   const [limit, setLimit] = useState<string>("5");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   async function reload() {
     try {
@@ -49,6 +51,16 @@ export function RunsTab({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (selectedRunId) {
+    return (
+      <RunDetail
+        sessionId={sessionId}
+        runId={selectedRunId}
+        onBack={() => setSelectedRunId(null)}
+      />
+    );
   }
 
   return (
@@ -124,8 +136,14 @@ export function RunsTab({
             </thead>
             <tbody>
               {runs.map((r) => (
-                <tr key={r.run_id} className="border-t">
-                  <td className="py-1 pr-3">{r.run_id}</td>
+                <tr
+                  key={r.run_id}
+                  className="cursor-pointer border-t hover:bg-slate-50"
+                  onClick={() => setSelectedRunId(r.run_id)}
+                >
+                  <td className="py-1 pr-3 text-blue-600 underline decoration-dashed underline-offset-2">
+                    {r.run_id}
+                  </td>
                   <td className="py-1 pr-3">{r.summary.model}</td>
                   <td className="py-1 pr-3">{r.summary.count}</td>
                   <td className="py-1 pr-3">{r.summary.passed}</td>
@@ -144,3 +162,4 @@ export function RunsTab({
     </div>
   );
 }
+

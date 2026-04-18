@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -20,6 +21,7 @@ class SampleResult:
     usage: dict | None
     latency_ms: int | None
     judge_trace: dict | None
+    raw_response: Any | None = None
 
 
 @dataclass
@@ -70,6 +72,10 @@ class ResultsWriter:
 def _json_default(o: Any) -> Any:
     if hasattr(o, "model_dump"):
         return o.model_dump()
+    if hasattr(o, "to_dict"):
+        return o.to_dict()
+    if dataclasses.is_dataclass(o) and not isinstance(o, type):
+        return dataclasses.asdict(o)
     if hasattr(o, "__dict__"):
         return o.__dict__
-    return str(o)
+    return repr(o)

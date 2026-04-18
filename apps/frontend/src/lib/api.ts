@@ -43,6 +43,26 @@ export interface RunRecord {
   summary: RunSummary;
 }
 
+export interface SampleResult {
+  index: number;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  model_output: Record<string, unknown> | null;
+  score: number | null;
+  reason: string | null;
+  error: string | null;
+  usage: { input_tokens: number; output_tokens: number } | null;
+  latency_ms: number | null;
+  judge_trace: Record<string, unknown> | null;
+  raw_response?: unknown;
+}
+
+export interface RunDetail {
+  run_id: string;
+  summary: RunSummary;
+  results: SampleResult[];
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${BACKEND_URL}${path}`, {
     ...init,
@@ -95,8 +115,10 @@ export const api = {
   listRuns: (sid: string) =>
     req<{ runs: RunRecord[] }>(`/sessions/${sid}/runs`),
   getRun: (sid: string, runId: string) =>
-    req<{ run_id: string; summary: RunSummary; results: Array<Record<string, unknown>> }>(
-      `/sessions/${sid}/runs/${runId}`,
-    ),
+    req<RunDetail>(`/sessions/${sid}/runs/${runId}`),
   exportUrl: (sid: string) => `${BACKEND_URL}/sessions/${sid}/export`,
+  runFileUrl: (sid: string, runId: string, name: string) =>
+    `${BACKEND_URL}/sessions/${sid}/runs/${runId}/files/${encodeURIComponent(name)}`,
+  runZipUrl: (sid: string, runId: string) =>
+    `${BACKEND_URL}/sessions/${sid}/runs/${runId}/download`,
 };

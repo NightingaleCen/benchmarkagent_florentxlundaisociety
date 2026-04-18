@@ -49,12 +49,14 @@ def run_benchmark(
             usage = None
             latency_ms = None
             judge_trace = None
+            raw_response = None
 
             try:
                 adapter_result = artifact.adapter_fn(model_client, record.input)
                 model_output = adapter_result.get("output")
                 usage = adapter_result.get("usage")
                 latency_ms = adapter_result.get("latency_ms")
+                raw_response = adapter_result.get("raw_response")
 
                 eval_result = artifact.evaluator_fn(
                     model_output, record.expected, judge
@@ -91,6 +93,7 @@ def run_benchmark(
                     usage=usage,
                     latency_ms=latency_ms,
                     judge_trace=judge_trace,
+                    raw_response=raw_response,
                 )
             )
     finally:

@@ -1,4 +1,0 @@
-{"ts": "2026-04-18T11:53:02.852366+00:00", "role": "user", "content": "I want to test whether a model correctly classifies support emails as urgent or not.", "model": "claude-sonnet-4-6"}
-{"ts": "2026-04-18T11:53:03.288935+00:00", "role": "error", "content": {"message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaBByremBcdA2YH3niX4r'}"}}
-{"ts": "2026-04-18T11:53:17.004094+00:00", "role": "user", "content": "s", "model": "claude-sonnet-4-6"}
-{"ts": "2026-04-18T11:53:17.331329+00:00", "role": "error", "content": {"message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaBBztRhqstXEkuRPENuS'}"}}

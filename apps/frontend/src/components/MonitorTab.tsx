@@ -175,8 +175,8 @@ export function MonitorTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-[320px_minmax(0,1fr)] gap-0 overflow-hidden">
-        <aside className="border-r">
+      <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] gap-0 overflow-hidden">
+        <aside className="flex flex-col overflow-hidden border-r">
           <div className="grid grid-cols-2 gap-2 border-b bg-slate-50 p-3 text-xs">
             <StatCard label="sessions" value={String(sessions.length)} />
             <StatCard label="active" value={String(activeSessions)} />
@@ -188,7 +188,7 @@ export function MonitorTab({
             {loading ? "refreshing session list..." : `last updated ${lastUpdated ?? "-"}`}
           </div>
 
-          <div className="max-h-[calc(100vh-250px)] overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {sessions.length === 0 ? (
               <div className="p-4 text-sm text-slate-400">No sessions yet.</div>
             ) : (
@@ -216,7 +216,7 @@ export function MonitorTab({
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-col">
+        <section className="flex min-w-0 flex-col overflow-hidden">
           {error && (
             <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
               {error}
@@ -245,11 +245,11 @@ export function MonitorTab({
               </div>
 
               <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                <div className="min-h-0 border-r">
+                <div className="flex min-h-0 flex-col border-r">
                   <div className="border-b px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Recent Messages
                   </div>
-                  <div className="max-h-full overflow-y-auto px-4 py-3">
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                     {messages.length === 0 ? (
                       <div className="text-sm text-slate-400">No messages yet.</div>
                     ) : (
@@ -271,11 +271,11 @@ export function MonitorTab({
                   </div>
                 </div>
 
-                <div className="min-h-0">
+                <div className="flex min-h-0 flex-col">
                   <div className="border-b px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Runs
                   </div>
-                  <div className="max-h-full overflow-y-auto px-4 py-3">
+                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                     {runs.length === 0 ? (
                       <div className="text-sm text-slate-400">No benchmark runs yet.</div>
                     ) : (
@@ -284,19 +284,29 @@ export function MonitorTab({
                           <div className="flex items-center justify-between gap-3">
                             <div className="mono text-xs text-slate-800">{run.run_id}</div>
                             <div className="text-xs text-slate-500">
-                              {run.summary.pass_rate.toFixed(2)} pass rate
+                              {run.summary
+                                ? `${run.summary.pass_rate.toFixed(2)} pass rate`
+                                : run.status === "running"
+                                  ? `running · ${run.progress?.done ?? 0}/${run.progress?.total ?? "?"}`
+                                  : run.status}
                             </div>
                           </div>
-                          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
-                            <span>model: {run.summary.model}</span>
-                            <span>count: {run.summary.count}</span>
-                            <span>passed: {run.summary.passed}</span>
-                            <span>failed: {run.summary.failed}</span>
-                            <span>errored: {run.summary.errored}</span>
-                            <span>avg ms: {run.summary.mean_latency_ms.toFixed(0)}</span>
-                            <span>in tok: {run.summary.total_input_tokens}</span>
-                            <span>out tok: {run.summary.total_output_tokens}</span>
-                          </div>
+                          {run.summary ? (
+                            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
+                              <span>model: {run.summary.model}</span>
+                              <span>count: {run.summary.count}</span>
+                              <span>passed: {run.summary.passed}</span>
+                              <span>failed: {run.summary.failed}</span>
+                              <span>errored: {run.summary.errored}</span>
+                              <span>avg ms: {run.summary.mean_latency_ms.toFixed(0)}</span>
+                              <span>in tok: {run.summary.total_input_tokens}</span>
+                              <span>out tok: {run.summary.total_output_tokens}</span>
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-xs text-slate-400">
+                              {run.error ?? "no summary yet"}
+                            </div>
+                          )}
                         </div>
                       ))
                     )}

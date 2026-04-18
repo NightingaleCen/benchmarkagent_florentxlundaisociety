@@ -13,7 +13,8 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        root = Path(os.environ.get("BMK_SESSIONS_ROOT", "apps/backend/sessions")).resolve()
+        default_sessions = str(Path.home() / ".benchmarkagent" / "sessions")
+        root = Path(os.environ.get("BMK_SESSIONS_ROOT", default_sessions)).resolve()
         return cls(
             sessions_root=root,
             orchestrator_model=os.environ.get(

@@ -1,0 +1,2 @@
+{"ts": "2026-04-18T11:32:45.776467+00:00", "role": "user", "content": "I want to test whether a model correctly classifies support emails as urgent or not.", "model": "claude-sonnet-4-6"}
+{"ts": "2026-04-18T11:32:46.143657+00:00", "role": "error", "content": {"message": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaBAS95UqvCXXoBprSQQ9'}"}}

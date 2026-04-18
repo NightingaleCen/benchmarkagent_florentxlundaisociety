@@ -16,6 +16,12 @@ export interface ChatEntry {
   content: unknown;
 }
 
+export interface SessionInfo {
+  id: string;
+  files: string[];
+  chat_entries: number;
+}
+
 export interface RunSummary {
   artifact_name: string;
   model: string;
@@ -58,8 +64,9 @@ export const api = {
   backendUrl: BACKEND_URL,
   getConfig: () => req<BackendConfig>("/config"),
   createSession: () => req<{ id: string }>("/sessions", { method: "POST" }),
+  listSessions: () => req<{ ids: string[] }>("/sessions"),
   getSession: (sid: string) =>
-    req<{ id: string; files: string[]; chat_entries: number }>(`/sessions/${sid}`),
+    req<SessionInfo>(`/sessions/${sid}`),
   listFiles: (sid: string) =>
     req<ArtifactListResponse>(`/sessions/${sid}/artifact`),
   readFile: (sid: string, path: string) =>

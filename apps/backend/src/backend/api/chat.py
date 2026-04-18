@@ -16,6 +16,7 @@ router = APIRouter(prefix="/sessions/{sid}", tags=["chat"])
 class MessageBody(BaseModel):
     content: str
     model: str | None = None  # per-turn override for the orchestrator model
+    allow_agent_data_access: bool = True
 
 
 @router.get("/messages")
@@ -36,7 +37,10 @@ async def post_message(
     async def event_stream():
         try:
             async for event in run_turn(
-                session, body.content, model_override=body.model
+                session,
+                body.content,
+                model_override=body.model,
+                allow_agent_data_access=body.allow_agent_data_access,
             ):
                 yield {
                     "event": event.kind,

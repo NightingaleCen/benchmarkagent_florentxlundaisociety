@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FileEditor } from "./FileEditor";
 import { RunsTab } from "./RunsTab";
+import { MonitorTab } from "./MonitorTab";
 import { api } from "@/lib/api";
 
 type TabKey =
@@ -10,7 +11,8 @@ type TabKey =
   | "dataset"
   | "adapter"
   | "evaluator"
-  | "runs";
+  | "runs"
+  | "monitor";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "manifest", label: "Manifest" },
@@ -18,6 +20,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "adapter", label: "Adapter" },
   { key: "evaluator", label: "Evaluator" },
   { key: "runs", label: "Runs" },
+  { key: "monitor", label: "Monitor" },
 ];
 
 export function ArtifactTabs({
@@ -71,6 +74,9 @@ export function ArtifactTabs({
             language="jsonl"
             emptyHint='one JSON record per line: {"input": {...}, "expected": {...}}'
             refreshToken={refreshToken}
+            allowUpload
+            allowDownload
+            downloadName="dataset.jsonl"
           />
         )}
         {active === "adapter" && (
@@ -91,6 +97,9 @@ export function ArtifactTabs({
         )}
         {active === "runs" && (
           <RunsTab sessionId={sessionId} refreshToken={refreshToken} />
+        )}
+        {active === "monitor" && (
+          <MonitorTab sessionId={sessionId} refreshToken={refreshToken} />
         )}
       </div>
     </div>

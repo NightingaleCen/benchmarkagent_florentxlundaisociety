@@ -7,6 +7,7 @@ import { ArtifactTabs } from "@/components/ArtifactTabs";
 
 const STORAGE_KEY = "bmk-session-id";
 const MODEL_STORAGE_KEY = "bmk-agent-model";
+const DATA_ACCESS_STORAGE_KEY = "bmk-agent-data-access";
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -14,6 +15,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [agentModel, setAgentModel] = useState<string>("");
   const [backendDefault, setBackendDefault] = useState<string>("");
+  const [allowAgentDataAccess, setAllowAgentDataAccess] = useState(true);
 
   useEffect(() => {
     api
@@ -22,6 +24,8 @@ export default function Home() {
         setBackendDefault(c.orchestrator_model_default);
         const saved = localStorage.getItem(MODEL_STORAGE_KEY);
         setAgentModel(saved || c.orchestrator_model_default);
+        const savedDataAccess = localStorage.getItem(DATA_ACCESS_STORAGE_KEY);
+        setAllowAgentDataAccess(savedDataAccess !== "false");
       })
       .catch((e) => setError(e.message));
 
@@ -47,6 +51,11 @@ export default function Home() {
     } else {
       localStorage.removeItem(MODEL_STORAGE_KEY);
     }
+  }
+
+  function updateAgentDataAccess(v: boolean) {
+    setAllowAgentDataAccess(v);
+    localStorage.setItem(DATA_ACCESS_STORAGE_KEY, String(v));
   }
 
   function bootstrap() {
@@ -117,6 +126,14 @@ export default function Home() {
               </button>
             )}
           </label>
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={allowAgentDataAccess}
+              onChange={(e) => updateAgentDataAccess(e.target.checked)}
+            />
+            allow agent to read dataset
+          </label>
           <button
             onClick={resetSession}
             className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
@@ -131,6 +148,7 @@ export default function Home() {
             sessionId={sessionId}
             onArtifactChanged={() => setRefreshToken((t) => t + 1)}
             agentModel={agentModel}
+            allowAgentDataAccess={allowAgentDataAccess}
           />
         </div>
         <div className="overflow-hidden">

@@ -8,6 +8,7 @@ interface Props {
   sessionId: string;
   onArtifactChanged: () => void;
   agentModel: string;
+  allowAgentDataAccess: boolean;
 }
 
 interface RenderedMessage {
@@ -61,7 +62,12 @@ function hydrateFromLog(entries: ChatEntry[]): RenderedMessage[] {
   return out;
 }
 
-export function ChatPanel({ sessionId, onArtifactChanged, agentModel }: Props) {
+export function ChatPanel({
+  sessionId,
+  onArtifactChanged,
+  agentModel,
+  allowAgentDataAccess,
+}: Props) {
   const [messages, setMessages] = useState<RenderedMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -93,7 +99,11 @@ export function ChatPanel({ sessionId, onArtifactChanged, agentModel }: Props) {
     try {
       await postSSE(
         `${api.backendUrl}/sessions/${sessionId}/messages`,
-        { content, model: agentModel || undefined },
+        {
+          content,
+          model: agentModel || undefined,
+          allow_agent_data_access: allowAgentDataAccess,
+        },
         (ev) => {
           const data = JSON.parse(ev.data);
           if (ev.event === "assistant_text") {
@@ -170,6 +180,9 @@ export function ChatPanel({ sessionId, onArtifactChanged, agentModel }: Props) {
         <div className="flex items-baseline gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Orchestrator</h2>
           <span className="mono text-xs text-slate-400">{agentModel}</span>
+          <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+            {allowAgentDataAccess ? "dataset visible" : "dataset hidden"}
+          </span>
         </div>
         <span className="mono text-xs text-slate-400">session {sessionId}</span>
       </div>

@@ -25,6 +25,18 @@ def _system_prompt() -> str:
     return _PROMPT_PATH.read_text(encoding="utf-8")
 
 
+def _build_system_prompt(*, allow_agent_data_access: bool) -> str:
+    prompt = _system_prompt()
+    if allow_agent_data_access:
+        return prompt
+    return (
+        prompt
+        + "\n\nAdditional constraint: the user has disabled your access to uploaded "
+        + "dataset files. Do not try to read, write, or dry-run against dataset "
+        + "content; ask the user to inspect or edit the data manually."
+    )
+
+
 def _detect_provider(model: str) -> str:
     """Return 'anthropic' for claude-* or anthropic:-prefixed models, else 'openai'."""
     if model.startswith("claude-") or model.startswith("anthropic:"):
@@ -69,6 +81,7 @@ async def run_turn(
     *,
     settings: Settings | None = None,
     model_override: str | None = None,
+    allow_agent_data_access: bool = True,
 ) -> AsyncIterator[AgentEvent]:
     """Drive one user turn: append their message, run the tool loop until the
     assistant stops requesting tools, append every event, yield as it goes.
@@ -88,10 +101,12 @@ async def run_turn(
         import openai as _openai
         client = _openai.AsyncOpenAI()
 
-    tools = build_tools(session)
+    tools = build_tools(session, allow_agent_data_access=allow_agent_data_access)
     tool_index: dict[str, ToolSpec] = {t.name: t for t in tools}
 
-    system = _system_prompt()
+    system = _build_system_prompt(
+        allow_agent_data_access=allow_agent_data_access
+    )
     anthropic_tool_specs = tools_to_anthropic_format(tools)
 
     session.append_chat({"role": "user", "content": user_message, "model": model})

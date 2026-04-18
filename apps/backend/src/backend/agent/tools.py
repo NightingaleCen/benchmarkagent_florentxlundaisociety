@@ -33,9 +33,18 @@ def _err(message: str) -> str:
     return json.dumps({"ok": False, "error": message}, ensure_ascii=False)
 
 
-def build_tools(session: Session) -> list[ToolSpec]:
+def _is_data_path(path: str) -> bool:
+    normalized = Path(path).as_posix().lstrip("./")
+    return normalized == "dataset.jsonl" or normalized.startswith("data/")
+
+
+def build_tools(
+    session: Session, *, allow_agent_data_access: bool = True
+) -> list[ToolSpec]:
     def read_artifact_file(args: dict) -> str:
         path = args["path"]
+        if not allow_agent_data_access and _is_data_path(path):
+            return _err("agent data access is disabled for dataset files")
         try:
             return _ok({"path": path, "content": session.read_artifact_file(path)})
         except FileNotFoundError:
@@ -46,6 +55,8 @@ def build_tools(session: Session) -> list[ToolSpec]:
     def write_artifact_file(args: dict) -> str:
         path = args["path"]
         content = args["content"]
+        if not allow_agent_data_access and _is_data_path(path):
+            return _err("agent data access is disabled for dataset files")
         try:
             session.write_artifact_file(path, content)
             return _ok({"path": path, "bytes": len(content.encode("utf-8"))})
@@ -56,6 +67,8 @@ def build_tools(session: Session) -> list[ToolSpec]:
         return _ok({"files": session.list_artifact_files()})
 
     def dry_run(args: dict) -> str:
+        if not allow_agent_data_access:
+            return _err("dry_run is unavailable while agent data access is disabled")
         sample_size = int(args.get("sample_size", 3))
         model_id = args.get("model", "claude-haiku-4-5-20251001")
         provider = args.get("provider")

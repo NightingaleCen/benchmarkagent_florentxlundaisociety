@@ -10,6 +10,7 @@ import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace as _NS
 from typing import Any
 
 import anthropic
@@ -191,21 +192,131 @@ async def _drive_loop(
     for iteration in range(max_iterations):
         try:
             if provider == "anthropic":
-                response = await client.messages.create(
+                # Iterate raw stream events so we can:
+                #   a) stream text chunks immediately as assistant_text
+                #   b) emit tool_use as soon as the block starts (name is known,
+                #      input is still being generated) — eliminates the "frozen"
+                #      experience on tool-calling turns.
+                _previewed_tool_ids: set[str] = set()
+                async with client.messages.stream(
                     model=model,
                     max_tokens=4096,
                     system=system,
                     tools=tool_specs,
                     messages=history,
-                )
+                ) as stream:
+                    async for event in stream:
+                        etype = getattr(event, "type", None)
+                        if etype == "content_block_start":
+                            cb = getattr(event, "content_block", None)
+                            if cb is not None and getattr(cb, "type", None) == "tool_use":
+                                _previewed_tool_ids.add(cb.id)
+                                yield AgentEvent(
+                                    "tool_use",
+                                    {
+                                        "type": "tool_use",
+                                        "id": cb.id,
+                                        "name": cb.name,
+                                        "input": {},
+                                    },
+                                )
+                        elif etype == "content_block_delta":
+                            delta = getattr(event, "delta", None)
+                            if delta is not None:
+                                dtype = getattr(delta, "type", None)
+                                if dtype == "text_delta":
+                                    yield AgentEvent(
+                                        "assistant_text", {"text": delta.text}
+                                    )
+                    response = await stream.get_final_message()
             else:
+                # OpenAI-compatible streaming — stream text and emit tool_use
+                # early (by name) just like the Anthropic path.
                 openai_messages = [{"role": "system", "content": system}] + history
-                response = await client.chat.completions.create(
+                _oi_text_buf = ""
+                _oi_tool_map: dict[int, dict] = {}
+                _oi_finish_reason: str | None = None
+                _oi_previewed_indices: set[int] = set()
+
+                stream_obj = await client.chat.completions.create(
                     model=model,
                     messages=openai_messages,
                     tools=tool_specs,
+                    stream=True,
                 )
-        except Exception as e:
+                async for chunk in stream_obj:
+                    choice = chunk.choices[0] if chunk.choices else None
+                    if not choice:
+                        continue
+                    if choice.finish_reason:
+                        _oi_finish_reason = choice.finish_reason
+                    delta = choice.delta
+                    if delta.content:
+                        _oi_text_buf += delta.content
+                        yield AgentEvent("assistant_text", {"text": delta.content})
+                    if delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = tc.index
+                            if idx not in _oi_tool_map:
+                                name = (
+                                    tc.function.name
+                                    if tc.function and tc.function.name
+                                    else ""
+                                )
+                                _oi_tool_map[idx] = {
+                                    "id": tc.id or "",
+                                    "name": name,
+                                    "args": "",
+                                }
+                                if name:
+                                    _oi_previewed_indices.add(idx)
+                                    yield AgentEvent(
+                                        "tool_use",
+                                        {
+                                            "type": "tool_use",
+                                            "id": _oi_tool_map[idx]["id"],
+                                            "name": name,
+                                            "input": {},
+                                        },
+                                    )
+                            else:
+                                if tc.id:
+                                    _oi_tool_map[idx]["id"] = tc.id
+                                if tc.function:
+                                    if tc.function.name:
+                                        _oi_tool_map[idx]["name"] += tc.function.name
+                                    if tc.function.arguments:
+                                        _oi_tool_map[idx]["args"] += (
+                                            tc.function.arguments
+                                        )
+
+                # Reconstruct a response-like namespace for the post-processing
+                # code below, which was written for the non-streaming case.
+                _oi_tc_ns = (
+                    [
+                        _NS(
+                            id=tc["id"],
+                            function=_NS(name=tc["name"], arguments=tc["args"]),
+                        )
+                        for tc in _oi_tool_map.values()
+                    ]
+                    if _oi_tool_map
+                    else None
+                )
+                response = _NS(
+                    choices=[
+                        _NS(
+                            message=_NS(
+                                content=_oi_text_buf if _oi_text_buf else None,
+                                tool_calls=_oi_tc_ns,
+                            ),
+                            finish_reason=_oi_finish_reason,
+                        )
+                    ]
+                )
+        except BaseException as e:
+            if not isinstance(e, Exception):
+                raise
             err = {"message": str(e)}
             session.append_chat({"role": "error", "content": err})
             yield AgentEvent("error", err)
@@ -220,7 +331,7 @@ async def _drive_loop(
                     text = block.text
                     assistant_blocks.append({"type": "text", "text": text})
                     session.append_chat({"role": "assistant", "content": text})
-                    yield AgentEvent("assistant_text", {"text": text})
+                    # Text already emitted chunk-by-chunk during streaming above.
                 elif block.type == "tool_use":
                     tu = {
                         "type": "tool_use",
@@ -231,7 +342,9 @@ async def _drive_loop(
                     assistant_blocks.append(tu)
                     tool_uses.append(tu)
                     session.append_chat({"role": "tool_use", "content": tu})
-                    yield AgentEvent("tool_use", tu)
+                    if block.id not in _previewed_tool_ids:
+                        # Only emit if not already previewed during streaming.
+                        yield AgentEvent("tool_use", tu)
 
             history.append({"role": "assistant", "content": assistant_blocks})
 
@@ -289,10 +402,10 @@ async def _drive_loop(
 
             if msg.content:
                 session.append_chat({"role": "assistant", "content": msg.content})
-                yield AgentEvent("assistant_text", {"text": msg.content})
+                # Text already emitted chunk-by-chunk during streaming above.
 
             if msg.tool_calls:
-                for tc in msg.tool_calls:
+                for idx, tc in enumerate(msg.tool_calls):
                     try:
                         input_data = json.loads(tc.function.arguments)
                     except Exception:
@@ -305,7 +418,9 @@ async def _drive_loop(
                     }
                     tool_uses_openai.append(tu)
                     session.append_chat({"role": "tool_use", "content": tu})
-                    yield AgentEvent("tool_use", tu)
+                    if idx not in _oi_previewed_indices:
+                        # Only emit if not already previewed during streaming.
+                        yield AgentEvent("tool_use", tu)
 
             history.append(native_assistant)
 

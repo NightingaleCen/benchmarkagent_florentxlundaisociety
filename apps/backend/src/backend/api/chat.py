@@ -46,7 +46,9 @@ async def post_message(
                     "event": event.kind,
                     "data": json.dumps(event.data, ensure_ascii=False),
                 }
-        except Exception as e:
+        except BaseException as e:
+            if not isinstance(e, Exception):
+                raise
             yield {
                 "event": "error",
                 "data": json.dumps({"message": str(e)}),

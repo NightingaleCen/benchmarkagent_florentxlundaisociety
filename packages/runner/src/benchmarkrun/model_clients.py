@@ -134,8 +134,9 @@ def build_model_client(model_id: str, *, provider: str | None = None) -> ModelCl
     If none of these can decide, raise ``ValueError`` with a message telling
     the user how to disambiguate.
     """
-    explicit_from_spec, model_name = parse_model_spec(model_id)
-
+    # When an explicit provider is given it takes highest precedence; skip
+    # parse_model_spec entirely so that model names containing ":" (e.g.
+    # "google/gemma-4-26b-a4b-it:free") are passed through unchanged.
     if provider is not None:
         provider = provider.strip().lower()
         if provider not in VALID_PROVIDERS:
@@ -144,18 +145,21 @@ def build_model_client(model_id: str, *, provider: str | None = None) -> ModelCl
                 f"supported: {list(VALID_PROVIDERS)}"
             )
         chosen = provider
-    elif explicit_from_spec is not None:
-        chosen = explicit_from_spec
+        model_name = model_id
     else:
-        detected = _detect_provider(model_name)
-        if detected is None:
-            raise ValueError(
-                f"cannot determine provider for model {model_name!r}. "
-                f"disambiguate by either prefixing the model "
-                f"(`--model anthropic:{model_name}` or `--model openai:{model_name}`) "
-                f"or passing `--provider anthropic|openai`."
-            )
-        chosen = detected
+        explicit_from_spec, model_name = parse_model_spec(model_id)
+        if explicit_from_spec is not None:
+            chosen = explicit_from_spec
+        else:
+            detected = _detect_provider(model_name)
+            if detected is None:
+                raise ValueError(
+                    f"cannot determine provider for model {model_name!r}. "
+                    f"disambiguate by either prefixing the model "
+                    f"(`--model anthropic:{model_name}` or `--model openai:{model_name}`) "
+                    f"or passing `--provider anthropic|openai`."
+                )
+            chosen = detected
 
     if chosen == "anthropic":
         return AnthropicModelClient(model_name)

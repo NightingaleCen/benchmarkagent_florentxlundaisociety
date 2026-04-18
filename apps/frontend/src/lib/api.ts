@@ -38,9 +38,23 @@ export interface RunSummary {
   judge_config: Record<string, unknown>;
 }
 
+export interface RunProgress {
+  done: number;
+  total: number | null;
+  passed: number;
+  failed: number;
+  errored: number;
+}
+
 export interface RunRecord {
   run_id: string;
-  summary: RunSummary;
+  /** "completed" | "running" | "failed" | "unknown" */
+  status: string;
+  summary: RunSummary | null;
+  progress: RunProgress | null;
+  model?: string;
+  started_at?: string;
+  error?: string | null;
 }
 
 export interface SampleResult {
@@ -124,6 +138,7 @@ export const api = {
         provider: provider ?? null,
       }),
     }),
+  triggerRunStreamUrl: (sid: string) => `${BACKEND_URL}/sessions/${sid}/runs`,
   listRuns: (sid: string) =>
     req<{ runs: RunRecord[] }>(`/sessions/${sid}/runs`),
   getRun: (sid: string, runId: string) =>

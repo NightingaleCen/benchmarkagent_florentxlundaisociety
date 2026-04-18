@@ -1,8 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, RunRecord } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, RunProgress, RunRecord } from "@/lib/api";
 import { RunDetail } from "@/components/RunDetail";
+import { postSSE } from "@/lib/sse";
+
+interface LiveRun {
+  runId: string;
+  model: string;
+  total: number | null;
+  progress: RunProgress;
+  log: string[]; // last N sample lines
+  error: string | null;
+}
+
+function ProgressBar({
+  done,
+  total,
+}: {
+  done: number;
+  total: number | null;
+}) {
+  const pct = total ? Math.round((done / total) * 100) : null;
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <div className="flex-1 overflow-hidden rounded-full bg-slate-200 h-1.5">
+        <div
+          className="h-1.5 rounded-full bg-slate-700 transition-all duration-200"
+          style={{ width: pct != null ? `${pct}%` : "100%" }}
+        />
+      </div>
+      <span className="mono shrink-0 text-xs text-slate-500">
+        {pct != null ? `${done}/${total} (${pct}%)` : `${done} done`}
+      </span>
+    </div>
+  );
+}
+
+function RunStatusBadge({ status }: { status: string }) {
+  const cls =
+    status === "completed"
+      ? "bg-green-100 text-green-800"
+      : status === "running"
+        ? "bg-blue-100 text-blue-800"
+        : status === "failed"
+          ? "bg-red-100 text-red-800"
+          : "bg-slate-100 text-slate-600";
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>
+      {status}
+    </span>
+  );
+}
 
 export function RunsTab({
   sessionId,
@@ -15,9 +64,10 @@ export function RunsTab({
   const [model, setModel] = useState("claude-haiku-4-5-20251001");
   const [provider, setProvider] = useState<string>("auto");
   const [limit, setLimit] = useState<string>("5");
-  const [busy, setBusy] = useState(false);
+  const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   async function reload() {
     try {
@@ -33,24 +83,105 @@ export function RunsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, refreshToken]);
 
+  // Poll while a live run is active so the table reflects server state after
+  // the stream ends (or if the user refreshes and we detect a server-side run).
+  useEffect(() => {
+    if (liveRun) return;
+    // check for any server-side in-progress run on mount
+    const serverRunning = runs.some((r) => r.status === "running");
+    if (!serverRunning) return;
+    const id = window.setInterval(reload, 2000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRun, runs]);
+
   async function trigger() {
-    setBusy(true);
+    if (liveRun) return;
     setError(null);
+
+    const n = limit.trim() === "" ? undefined : Number(limit);
+    const prov = provider === "auto" ? undefined : provider;
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    setLiveRun({
+      runId: "",
+      model,
+      total: null,
+      progress: { done: 0, total: null, passed: 0, failed: 0, errored: 0 },
+      log: [],
+      error: null,
+    });
+
     try {
-      const n = limit.trim() === "" ? undefined : Number(limit);
-      const prov = provider === "auto" ? undefined : provider;
-      await api.triggerRun(
-        sessionId,
-        model,
-        Number.isFinite(n!) ? n : undefined,
-        prov,
+      await postSSE(
+        api.triggerRunStreamUrl(sessionId),
+        {
+          model,
+          limit: Number.isFinite(n!) ? n : null,
+          provider: prov ?? null,
+        },
+        (ev) => {
+          const data = JSON.parse(ev.data);
+
+          if (ev.event === "started") {
+            setLiveRun((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    model: data.model ?? prev.model,
+                    total: data.total ?? null,
+                  }
+                : prev,
+            );
+          } else if (ev.event === "sample") {
+            const scoreMark =
+              data.score === 1 ? "✓" : data.error ? "!" : "✗";
+            const preview = data.error
+              ? data.error.slice(0, 80)
+              : (data.reason ?? "").slice(0, 80);
+            const line = `#${data.index} ${scoreMark}  ${preview}`;
+            setLiveRun((prev) => {
+              if (!prev) return prev;
+              const log = [...prev.log, line].slice(-30);
+              return {
+                ...prev,
+                progress: {
+                  done: data.done,
+                  total: data.total ?? prev.total,
+                  passed: data.passed,
+                  failed: data.failed,
+                  errored: data.errored,
+                },
+                log,
+              };
+            });
+          } else if (ev.event === "done") {
+            setLiveRun((prev) =>
+              prev ? { ...prev, runId: data.run_id ?? prev.runId } : prev,
+            );
+          } else if (ev.event === "error") {
+            setLiveRun((prev) =>
+              prev ? { ...prev, error: data.message ?? "unknown error" } : prev,
+            );
+          }
+        },
+        ctrl.signal,
       );
-      await reload();
     } catch (e) {
-      setError((e as Error).message);
+      if ((e as Error).name !== "AbortError") {
+        setError((e as Error).message);
+      }
     } finally {
-      setBusy(false);
+      abortRef.current = null;
+      setLiveRun(null);
+      await reload();
     }
+  }
+
+  function cancelRun() {
+    abortRef.current?.abort();
   }
 
   if (selectedRunId) {
@@ -65,6 +196,7 @@ export function RunsTab({
 
   return (
     <div className="flex h-full flex-col">
+      {/* controls */}
       <div className="flex items-end gap-2 border-b p-3">
         <label className="flex flex-col text-xs text-slate-600">
           model
@@ -96,13 +228,21 @@ export function RunsTab({
             placeholder="all"
           />
         </label>
-        <button
-          onClick={trigger}
-          disabled={busy}
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700 disabled:bg-slate-300"
-        >
-          {busy ? "running..." : "run benchmark"}
-        </button>
+        {liveRun ? (
+          <button
+            onClick={cancelRun}
+            className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+          >
+            cancel
+          </button>
+        ) : (
+          <button
+            onClick={trigger}
+            className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
+          >
+            run benchmark
+          </button>
+        )}
         <button
           onClick={reload}
           className="rounded border px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
@@ -110,13 +250,43 @@ export function RunsTab({
           refresh
         </button>
       </div>
+
       {error && (
         <div className="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
         </div>
       )}
+
+      {/* live progress panel */}
+      {liveRun && (
+        <div className="border-b bg-blue-50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-blue-800">
+              Running · {liveRun.model}
+            </span>
+            <span className="mono text-xs text-blue-600">
+              {liveRun.progress.passed}✓ {liveRun.progress.failed}✗{" "}
+              {liveRun.progress.errored}!
+            </span>
+          </div>
+          <ProgressBar
+            done={liveRun.progress.done}
+            total={liveRun.total}
+          />
+          {liveRun.error && (
+            <div className="mt-1 text-xs text-red-700">{liveRun.error}</div>
+          )}
+          {liveRun.log.length > 0 && (
+            <pre className="mono mt-2 max-h-36 overflow-y-auto rounded bg-blue-100 p-2 text-[11px] text-blue-900">
+              {liveRun.log.join("\n")}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* run history table */}
       <div className="flex-1 overflow-y-auto p-3">
-        {runs.length === 0 ? (
+        {runs.length === 0 && !liveRun ? (
           <div className="text-sm text-slate-400">
             No runs yet. Trigger one above, or ask the agent to call dry_run.
           </div>
@@ -125,6 +295,7 @@ export function RunsTab({
             <thead>
               <tr className="text-left text-slate-500">
                 <th className="py-1 pr-3">run_id</th>
+                <th className="py-1 pr-3">status</th>
                 <th className="py-1 pr-3">model</th>
                 <th className="py-1 pr-3">count</th>
                 <th className="py-1 pr-3">passed</th>
@@ -138,20 +309,41 @@ export function RunsTab({
               {runs.map((r) => (
                 <tr
                   key={r.run_id}
-                  className="cursor-pointer border-t hover:bg-slate-50"
-                  onClick={() => setSelectedRunId(r.run_id)}
+                  className={`border-t ${r.status === "completed" ? "cursor-pointer hover:bg-slate-50" : ""}`}
+                  onClick={() =>
+                    r.status === "completed" && setSelectedRunId(r.run_id)
+                  }
                 >
                   <td className="py-1 pr-3 text-blue-600 underline decoration-dashed underline-offset-2">
                     {r.run_id}
                   </td>
-                  <td className="py-1 pr-3">{r.summary.model}</td>
-                  <td className="py-1 pr-3">{r.summary.count}</td>
-                  <td className="py-1 pr-3">{r.summary.passed}</td>
-                  <td className="py-1 pr-3">{r.summary.pass_rate.toFixed(2)}</td>
-                  <td className="py-1 pr-3">{r.summary.total_input_tokens}</td>
-                  <td className="py-1 pr-3">{r.summary.total_output_tokens}</td>
                   <td className="py-1 pr-3">
-                    {r.summary.mean_latency_ms.toFixed(0)}
+                    <RunStatusBadge status={r.status} />
+                  </td>
+                  <td className="py-1 pr-3">
+                    {r.summary?.model ?? r.model ?? "—"}
+                  </td>
+                  <td className="py-1 pr-3">
+                    {r.status === "running" && r.progress
+                      ? `${r.progress.done}/${r.progress.total ?? "?"}`
+                      : (r.summary?.count ?? "—")}
+                  </td>
+                  <td className="py-1 pr-3">
+                    {r.status === "running" && r.progress
+                      ? r.progress.passed
+                      : (r.summary?.passed ?? "—")}
+                  </td>
+                  <td className="py-1 pr-3">
+                    {r.summary ? r.summary.pass_rate.toFixed(2) : "—"}
+                  </td>
+                  <td className="py-1 pr-3">
+                    {r.summary?.total_input_tokens ?? "—"}
+                  </td>
+                  <td className="py-1 pr-3">
+                    {r.summary?.total_output_tokens ?? "—"}
+                  </td>
+                  <td className="py-1 pr-3">
+                    {r.summary ? r.summary.mean_latency_ms.toFixed(0) : "—"}
                   </td>
                 </tr>
               ))}
@@ -162,4 +354,3 @@ export function RunsTab({
     </div>
   );
 }
-

@@ -118,7 +118,84 @@ async def run_turn(
         history = _load_history_openai(session)
         tool_specs = _tools_to_openai_format(anthropic_tool_specs)
 
-    for iteration in range(settings.max_agent_iterations):
+    async for event in _drive_loop(
+        session,
+        client,
+        provider,
+        model,
+        tool_index,
+        tool_specs,
+        system,
+        history,
+        settings.max_agent_iterations,
+    ):
+        yield event
+
+
+async def resume_turn(
+    session: Session,
+    *,
+    settings: Settings | None = None,
+    model_override: str | None = None,
+    allow_agent_data_access: bool = True,
+) -> AsyncIterator[AgentEvent]:
+    """Continue a turn that was paused due to hitting the iteration limit.
+
+    Does not append a new user message — picks up from the existing history.
+    """
+    settings = settings or get_settings()
+    model_raw = model_override or settings.orchestrator_model
+    provider = _detect_provider(model_raw)
+    model = _strip_provider_prefix(model_raw)
+
+    if provider == "anthropic":
+        client: Any = anthropic.AsyncAnthropic()
+    else:
+        import openai as _openai
+        client = _openai.AsyncOpenAI()
+
+    tools = build_tools(session, allow_agent_data_access=allow_agent_data_access)
+    tool_index: dict[str, ToolSpec] = {t.name: t for t in tools}
+
+    system = _build_system_prompt(
+        allow_agent_data_access=allow_agent_data_access
+    )
+    anthropic_tool_specs = tools_to_anthropic_format(tools)
+
+    if provider == "anthropic":
+        history = _load_history_anthropic(session)
+        tool_specs: list[dict] = anthropic_tool_specs
+    else:
+        history = _load_history_openai(session)
+        tool_specs = _tools_to_openai_format(anthropic_tool_specs)
+
+    async for event in _drive_loop(
+        session,
+        client,
+        provider,
+        model,
+        tool_index,
+        tool_specs,
+        system,
+        history,
+        settings.max_agent_iterations,
+    ):
+        yield event
+
+
+async def _drive_loop(
+    session: Session,
+    client: Any,
+    provider: str,
+    model: str,
+    tool_index: dict[str, ToolSpec],
+    tool_specs: list[dict],
+    system: str,
+    history: list[dict],
+    max_iterations: int,
+) -> AsyncIterator[AgentEvent]:
+    """Core tool loop shared by run_turn and resume_turn."""
+    for iteration in range(max_iterations):
         try:
             if provider == "anthropic":
                 response = await client.messages.create(
@@ -228,9 +305,9 @@ async def run_turn(
                 session.append_chat({"role": "tool_result", "content": {"name": tu["name"], "result": result_str, "tool_use_id": tu["id"]}})
                 yield AgentEvent("tool_result", {"name": tu["name"], "result": result_str})
 
-    err = {"message": f"agent exceeded max iterations ({settings.max_agent_iterations})"}
-    session.append_chat({"role": "error", "content": err})
-    yield AgentEvent("error", err)
+    cont = {"used_iterations": max_iterations, "model": model}
+    session.append_chat({"role": "continuation_required", "content": cont})
+    yield AgentEvent("continuation_required", cont)
 
 
 def _run_tool(tool_index: dict[str, ToolSpec], tu: dict) -> str:

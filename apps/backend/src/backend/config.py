@@ -20,7 +20,7 @@ class Settings:
             orchestrator_model=os.environ.get(
                 "BMK_ORCHESTRATOR_MODEL", "claude-sonnet-4-6"
             ),
-            max_agent_iterations=int(os.environ.get("BMK_MAX_AGENT_ITERATIONS", "20")),
+            max_agent_iterations=int(os.environ.get("BMK_MAX_AGENT_ITERATIONS", "40")),
         )
 
 
